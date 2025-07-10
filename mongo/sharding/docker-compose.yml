@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  # Config Servers (replica set)
+  configsvr1:
+    image: mongo:7.0
+    container_name: mongo-configsvr-1
+    restart: unless-stopped
+    ports:
+      - "27030:27017"
+    volumes:
+      - configsvr1_data:/data/db
+    command: mongod --configsvr --replSet configReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  configsvr2:
+    image: mongo:7.0
+    container_name: mongo-configsvr-2
+    restart: unless-stopped
+    ports:
+      - "27031:27017"
+    volumes:
+      - configsvr2_data:/data/db
+    command: mongod --configsvr --replSet configReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  configsvr3:
+    image: mongo:7.0
+    container_name: mongo-configsvr-3
+    restart: unless-stopped
+    ports:
+      - "27032:27017"
+    volumes:
+      - configsvr3_data:/data/db
+    command: mongod --configsvr --replSet configReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  # Shard 1
+  shard1:
+    image: mongo:7.0
+    container_name: mongo-shard-1
+    restart: unless-stopped
+    ports:
+      - "27040:27017"
+    volumes:
+      - shard1_data:/data/db
+    command: mongod --shardsvr --replSet shard1ReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  # Shard 2
+  shard2:
+    image: mongo:7.0
+    container_name: mongo-shard-2
+    restart: unless-stopped
+    ports:
+      - "27041:27017"
+    volumes:
+      - shard2_data:/data/db
+    command: mongod --shardsvr --replSet shard2ReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  # Shard 3
+  shard3:
+    image: mongo:7.0
+    container_name: mongo-shard-3
+    restart: unless-stopped
+    ports:
+      - "27042:27017"
+    volumes:
+      - shard3_data:/data/db
+    command: mongod --shardsvr --replSet shard3ReplSet --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup-shard
+
+  # Mongos Router
+  mongos:
+    image: mongo:7.0
+    container_name: mongo-mongos
+    restart: unless-stopped
+    ports:
+      - "27021:27017"
+    volumes:
+      - mongos_data:/data/db
+    command: mongos --configdb configReplSet/configsvr1:27017,configsvr2:27017,configsvr3:27017 --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - configsvr1
+      - configsvr2
+      - configsvr3
+      - shard1
+      - shard2
+      - shard3
+
+  # Setup keyfile
+  mongo-key-setup-shard:
+    image: mongo:7.0
+    container_name: mongo-key-setup-shard
+    volumes:
+      - configsvr1_data:/data/configsvr1
+      - configsvr2_data:/data/configsvr2
+      - configsvr3_data:/data/configsvr3
+      - shard1_data:/data/shard1
+      - shard2_data:/data/shard2
+      - shard3_data:/data/shard3
+      - mongos_data:/data/mongos
+    command: >
+      bash -c "
+        openssl rand -base64 756 > /data/keyfile &&
+        chmod 400 /data/keyfile &&
+        cp /data/keyfile /data/configsvr1/keyfile &&
+        cp /data/keyfile /data/configsvr2/keyfile &&
+        cp /data/keyfile /data/configsvr3/keyfile &&
+        cp /data/keyfile /data/shard1/keyfile &&
+        cp /data/keyfile /data/shard2/keyfile &&
+        cp /data/keyfile /data/shard3/keyfile &&
+        cp /data/keyfile /data/mongos/keyfile &&
+        chmod 400 /data/configsvr1/keyfile &&
+        chmod 400 /data/configsvr2/keyfile &&
+        chmod 400 /data/configsvr3/keyfile &&
+        chmod 400 /data/shard1/keyfile &&
+        chmod 400 /data/shard2/keyfile &&
+        chmod 400 /data/shard3/keyfile &&
+        chmod 400 /data/mongos/keyfile
+      "
+
+  # Sharding initialization
+  mongo-shard-init:
+    image: mongo:7.0
+    container_name: mongo-shard-init
+    depends_on:
+      - mongos
+    volumes:
+      - ./shard-init.js:/scripts/shard-init.js:ro
+    command: >
+      bash -c "
+        sleep 20 &&
+        mongosh --host mongos:27017 --file /scripts/shard-init.js
+      "
+
+volumes:
+  configsvr1_data:
+  configsvr2_data:
+  configsvr3_data:
+  shard1_data:
+  shard2_data:
+  shard3_data:
+  mongos_data:

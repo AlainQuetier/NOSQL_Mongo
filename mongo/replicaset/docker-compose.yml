@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  mongo1:
+    image: mongo:7.0
+    container_name: mongo-rs-1
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongo1_data:/data/db
+      - ./rs-init.sh:/scripts/rs-init.sh:ro
+    command: mongod --replSet rs0 --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup
+
+  mongo2:
+    image: mongo:7.0
+    container_name: mongo-rs-2
+    restart: unless-stopped
+    ports:
+      - "27019:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongo2_data:/data/db
+    command: mongod --replSet rs0 --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup
+
+  mongo3:
+    image: mongo:7.0
+    container_name: mongo-rs-3
+    restart: unless-stopped
+    ports:
+      - "27020:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongo3_data:/data/db
+    command: mongod --replSet rs0 --auth --keyFile /opt/keyfile --bind_ip_all
+    depends_on:
+      - mongo-key-setup
+
+  mongo-key-setup:
+    image: mongo:7.0
+    container_name: mongo-key-setup
+    volumes:
+      - mongo1_data:/data/db
+      - mongo2_data:/data/db2
+      - mongo3_data:/data/db3
+    command: >
+      bash -c "
+        openssl rand -base64 756 > /data/db/keyfile &&
+        chmod 400 /data/db/keyfile &&
+        cp /data/db/keyfile /data/db2/keyfile &&
+        cp /data/db/keyfile /data/db3/keyfile &&
+        chmod 400 /data/db2/keyfile &&
+        chmod 400 /data/db3/keyfile
+      "
+
+  mongo-rs-init:
+    image: mongo:7.0
+    container_name: mongo-rs-init
+    depends_on:
+      - mongo1
+      - mongo2
+      - mongo3
+    volumes:
+      - ./rs-init.js:/scripts/rs-init.js:ro
+    command: >
+      bash -c "
+        sleep 10 &&
+        mongosh --host mongo1:27017 --username admin --password password123 --authenticationDatabase admin --file /scripts/rs-init.js
+      "
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
